@@ -3,19 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Futuristic 3D Space Shooter with Endless Terrain</title>
+    <title>Futuristic 3D Space Shooter</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; }
-        canvas { display: block; }
+        canvas { display: none; width: 100%; height: 100%; }
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #00ffcc;
+            font-family: 'Orbitron', sans-serif;
+            text-align: center;
+            text-shadow: 0 0 10px #00ffcc;
+        }
+        #start-screen h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        #start-screen p {
+            font-size: 1.2rem;
+            margin: 0.5rem;
+            max-width: 80%;
+        }
+        #start-button {
+            margin-top: 2rem;
+            padding: 1rem 2rem;
+            font-size: 1.5rem;
+            background: none;
+            border: 2px solid #00ffcc;
+            color: #00ffcc;
+            font-family: 'Orbitron', sans-serif;
+            cursor: pointer;
+            text-shadow: 0 0 10px #00ffcc;
+            box-shadow: 0 0 20px #00ffcc;
+            transition: all 0.3s;
+        }
+        #start-button:hover {
+            background: #00ffcc;
+            color: #000;
+            text-shadow: none;
+        }
         #hud {
             position: absolute;
             top: 0;
             left: 0;
             color: #00ffcc;
             font-family: 'Orbitron', sans-serif;
-            font-size: 20px;
-            padding: 20px;
+            font-size: 1.5rem;
+            padding: 1rem;
             text-shadow: 0 0 10px #00ffcc;
+            display: none;
         }
         #crosshair {
             position: absolute;
@@ -25,13 +69,31 @@
             height: 20px;
             background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="2" fill="none" stroke="%2300ffcc" stroke-width="1"/><line x1="10" y1="2" x2="10" y2="6" stroke="%2300ffcc" stroke-width="1"/><line x1="10" y1="14" x2="10" y2="18" stroke="%2300ffcc" stroke-width="1"/><line x1="2" y1="10" x2="6" y2="10" stroke="%2300ffcc" stroke-width="1"/><line x1="14" y1="10" x2="18" y2="10" stroke="%2300ffcc" stroke-width="1"/></svg>') no-repeat center;
             transform: translate(-50%, -50%);
+            display: none;
+        }
+        @media (max-width: 768px) {
+            #start-screen h1 { font-size: 2rem; }
+            #start-screen p { font-size: 1rem; }
+            #start-button { font-size: 1.2rem; padding: 0.8rem 1.5rem; }
+            #hud { font-size: 1rem; }
+            #crosshair { width: 15px; height: 15px; }
         }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <div id="start-screen">
+        <h1>Futuristic Space Shooter</h1>
+        <p>Desktop Controls:</p>
+        <p>W/Up: Move Forward, S/Down: Move Backward, A/Left: Strafe Left, D/Right: Strafe Right</p>
+        <p>Mouse: Aim, Spacebar: Shoot</p>
+        <p>Mobile Controls:</p>
+        <p>Swipe: Move in Swipe Direction, Tap: Shoot</p>
+        <button id="start-button">Start Game</button>
+    </div>
     <div id="hud">Asteroids Destroyed: <span id="score">0</span></div>
     <div id="crosshair"></div>
+    <canvas id="game-canvas"></canvas>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
     <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/EffectComposer.js"></script>
     <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/RenderPass.js"></script>
@@ -40,12 +102,28 @@
     <script src="https://unpkg.com/three@0.134.0/examples/js/shaders/CopyShader.js"></script>
     <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/ShaderPass.js"></script>
     <script>
+        // Start screen handling
+        const startScreen = document.getElementById('start-screen');
+        const canvas = document.getElementById('game-canvas');
+        const hud = document.getElementById('hud');
+        const crosshair = document.getElementById('crosshair');
+        document.getElementById('start-button').addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            canvas.style.display = 'block';
+            hud.style.display = 'block';
+            crosshair.style.display = 'block';
+            animate();
+        });
+
         // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+
+        // Detect mobile device
+        const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+        const cameraOffset = isMobile ? new THREE.Vector3(0, 10, 30) : new THREE.Vector3(0, 15, 40);
 
         // Post-processing (bloom effect)
         let composer;
@@ -71,51 +149,120 @@
         scene.add(directionalLight);
         const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
         scene.add(ambientLight);
-        const engineLight = new THREE.PointLight(0x00ffcc, 1, 50);
+        const engineLight = new THREE.PointLight(0x99ccff, 1, 50);
         scene.add(engineLight);
 
-        // Spaceship (futuristic design)
+        // Spaceship (realistic design)
         const shipGroup = new THREE.Group();
-        const fuselageGeometry = new THREE.CylinderGeometry(2, 5, 20, 16);
+        // Fuselage
+        const fuselageGeometry = new THREE.OctahedronGeometry(5);
         const fuselageMaterial = new THREE.MeshStandardMaterial({
-            color: 0xaaaaaa,
-            metalness: 0.8,
-            roughness: 0.2,
-            emissive: 0x00ffcc,
-            emissiveIntensity: 0.2
+            color: 0x333333,
+            metalness: 0.95,
+            roughness: 0.05,
+            emissive: 0x00ccff,
+            emissiveIntensity: 0.1
         });
         const fuselage = new THREE.Mesh(fuselageGeometry, fuselageMaterial);
-        const wingGeometry = new THREE.BoxGeometry(10, 1, 5);
-        const wingMaterial = new THREE.MeshStandardMaterial({
+        fuselage.scale.set(1, 2.5, 1);
+        // Cockpit
+        const cockpitGeometry = new THREE.SphereGeometry(2, 16, 16);
+        const cockpitMaterial = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            metalness: 0.8,
+            roughness: 0.2,
+            transparent: true,
+            opacity: 0.7
+        });
+        const cockpit = new THREE.Mesh(cockpitGeometry, cockpitMaterial);
+        cockpit.position.set(0, 0, 8);
+        // Thruster
+        const thrusterGeometry = new THREE.CylinderGeometry(2, 3, 4, 16);
+        const thrusterMaterial = new THREE.MeshStandardMaterial({
+            color: 0x333333,
+            metalness: 0.95,
+            roughness: 0.05,
+            emissive: 0x00ccff,
+            emissiveIntensity: 0.1
+        });
+        const thruster = new THREE.Mesh(thrusterGeometry, thrusterMaterial);
+        thruster.position.set(0, 0, -8);
+        // Fins
+        const finGeometry = new THREE.ConeGeometry(2, 4, 16);
+        const finMaterial = new THREE.MeshStandardMaterial({
             color: 0x555555,
             metalness: 0.9,
-            roughness: 0.3
+            roughness: 0.1,
+            emissive: 0xff3333,
+            emissiveIntensity: 0.1
         });
-        const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-        leftWing.position.set(-7, 0, 0);
-        const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-        rightWing.position.set(7, 0, 0);
-        shipGroup.add(fuselage, leftWing, rightWing);
+        const fins = [];
+        for (let i = 0; i < 4; i++) {
+            const fin = new THREE.Mesh(finGeometry, finMaterial);
+            fin.position.set(
+                Math.cos(i * Math.PI / 2) * 5,
+                0,
+                Math.sin(i * Math.PI / 2) * 5 - 2
+            );
+            fin.rotation.z = i * Math.PI / 2;
+            fin.rotation.x = Math.PI / 6;
+            fins.push(fin);
+            shipGroup.add(fin);
+            // Running lights
+            const finLight = new THREE.PointLight(0xff3333, 0.2, 10);
+            finLight.position.copy(fin.position);
+            finLight.position.z -= 2;
+            shipGroup.add(finLight);
+        }
+        // Antennas
+        const antennaGeometry = new THREE.CylinderGeometry(0.2, 0.2, 3, 8);
+        const antennaMaterial = new THREE.MeshStandardMaterial({
+            color: 0x555555,
+            metalness: 0.9,
+            roughness: 0.1
+        });
+        const antenna1 = new THREE.Mesh(antennaGeometry, antennaMaterial);
+        antenna1.position.set(0, 2, 4);
+        antenna1.rotation.x = Math.PI / 4;
+        const antenna2 = new THREE.Mesh(antennaGeometry, antennaMaterial);
+        antenna2.position.set(0, -2, 4);
+        antenna2.rotation.x = -Math.PI / 4;
+        shipGroup.add(fuselage, cockpit, thruster, antenna1, antenna2);
         shipGroup.rotation.x = Math.PI / 2;
         scene.add(shipGroup);
 
-        // Engine particles
+        // Engine particles (realistic plasma)
         const particleGeometry = new THREE.BufferGeometry();
-        const particleCount = 50;
+        const particleCount = 150;
         const particlePositions = new Float32Array(particleCount * 3);
         const particleVelocities = [];
+        const particleColors = new Float32Array(particleCount * 3);
         for (let i = 0; i < particleCount; i++) {
             particlePositions[i * 3] = 0;
             particlePositions[i * 3 + 1] = 0;
             particlePositions[i * 3 + 2] = 0;
-            particleVelocities.push(new THREE.Vector3(0, 0, -Math.random() * 5 - 2));
+            particleVelocities.push(new THREE.Vector3(
+                (Math.random() - 0.5) * 1,
+                (Math.random() - 0.5) * 1,
+                -Math.random() * 8 - 4
+            ));
+            const t = Math.random();
+            const color = [
+                1 - t * 0.6, // R: 1 to 0.4
+                1 - t * 0.2, // G: 1 to 0.8
+                1 // B: 1
+            ];
+            particleColors[i * 3] = color[0];
+            particleColors[i * 3 + 1] = color[1];
+            particleColors[i * 3 + 2] = color[2];
         }
         particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        particleGeometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
         const particleMaterial = new THREE.PointsMaterial({
-            color: 0x00ffcc,
-            size: 2,
+            size: 1.5,
             transparent: true,
-            opacity: 0.8
+            opacity: 0.7,
+            vertexColors: true
         });
         const particles = new THREE.Points(particleGeometry, particleMaterial);
         scene.add(particles);
@@ -184,7 +331,6 @@
             const chunkZ = Math.floor(shipGroup.position.z / chunkSize);
             const newChunks = new Set();
 
-            // Generate chunks in a 3x3x3 grid around the player
             for (let x = chunkX - 1; x <= chunkX + 1; x++) {
                 for (let y = chunkY - 1; y <= chunkY + 1; y++) {
                     for (let z = chunkZ - 1; z <= chunkZ + 1; z++) {
@@ -203,7 +349,6 @@
                 }
             }
 
-            // Remove chunks outside the 3x3x3 grid
             for (const [key, chunkAsteroids] of chunks) {
                 if (!newChunks.has(key)) {
                     chunkAsteroids.forEach(asteroid => {
@@ -221,7 +366,6 @@
         function preloadSounds() {
             try {
                 // Replace with local audio files
-                // Example: laserSound = new Audio('sounds/laser.mp3');
                 // laserSound = new Audio('sounds/laser.mp3');
                 // engineSound = new Audio('sounds/engine.mp3');
                 // explosionSound = new Audio('sounds/explosion.mp3');
@@ -250,7 +394,7 @@
         let pitch = 0;
         let yaw = 0;
 
-        // Input handling
+        // Input handling (keyboard/mouse)
         const keys = {};
         document.addEventListener('keydown', e => {
             keys[e.key] = true;
@@ -267,15 +411,55 @@
             if (e.key === ' ') keys['space'] = false;
         });
 
-        // Mouse controls for aiming
+        // Mouse controls
         document.addEventListener('mousemove', e => {
-            const sensitivity = 0.002;
-            yaw -= e.movementX * sensitivity;
-            pitch -= e.movementY * sensitivity;
-            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+            if (document.pointerLockElement === document.body) {
+                const sensitivity = 0.002;
+                yaw -= e.movementX * sensitivity;
+                pitch -= e.movementY * sensitivity;
+                pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+            }
         });
-        document.body.requestPointerLock = document.body.requestPointerLock || document.body.mozRequestPointerLock || document.body.webkitRequestPointerLock;
-        document.addEventListener('click', () => document.body.requestPointerLock());
+        document.addEventListener('click', () => {
+            if (!isMobile) document.body.requestPointerLock();
+        });
+
+        // Touch controls
+        let touchStart = null;
+        let lastTap = 0;
+        document.addEventListener('touchstart', e => {
+            e.preventDefault();
+            touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                const laser = createLaser();
+                scene.add(laser.mesh);
+                lasers.push(laser);
+                if (laserSound) laserSound.play().catch(e => console.warn('Laser sound failed:', e));
+            }
+            lastTap = now;
+        });
+        document.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (touchStart) {
+                const touch = e.touches[0];
+                const dx = (touch.clientX - touchStart.x) / window.innerWidth;
+                const dy = (touch.clientY - touchStart.y) / window.innerHeight;
+                const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                const threshold = 0.1;
+                if (Math.abs(dx) > threshold || Math.abs(dy) > threshold) {
+                    if (angle > -45 && angle <= 45) keys['d'] = true;
+                    else if (angle > 135 || angle <= -135) keys['a'] = true;
+                    else if (angle > 45 && angle <= 135) keys['s'] = true;
+                    else if (angle > -135 && angle <= -45) keys['w'] = true;
+                }
+            }
+        });
+        document.addEventListener('touchend', e => {
+            e.preventDefault();
+            touchStart = null;
+            keys['w'] = keys['s'] = keys['a'] = keys['d'] = false;
+        });
 
         function createLaser() {
             const geometry = new THREE.SphereGeometry(1, 16, 16);
@@ -305,7 +489,7 @@
         }
 
         function update() {
-            // Update orientation (mouse-based)
+            // Update orientation
             shipGroup.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
 
             // Movement controls
@@ -344,8 +528,8 @@
             for (let i = 0; i < particleCount; i++) {
                 const pos = particlePositions[i * 3 + 2];
                 if (pos < -20 || pos > 0) {
-                    particlePositions[i * 3] = (Math.random() - 0.5) * 2;
-                    particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 2;
+                    particlePositions[i * 3] = (Math.random() - 0.5) * 1;
+                    particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 1;
                     particlePositions[i * 3 + 2] = 0;
                 } else {
                     particlePositions[i * 3] += particleVelocities[i].x * (thrusting ? 1 : 0.2);
@@ -357,9 +541,10 @@
             particles.position.copy(shipGroup.position);
             particles.quaternion.copy(shipGroup.quaternion);
 
-            // Update engine light
+            // Update engine light (pulsing)
             engineLight.position.copy(shipGroup.position);
             engineLight.position.add(new THREE.Vector3(0, 0, 10).applyQuaternion(shipGroup.quaternion));
+            engineLight.intensity = 0.8 + 0.4 * Math.sin(Date.now() * 0.005);
 
             // Update chunks
             updateChunks();
@@ -441,7 +626,7 @@
             }
 
             // Update camera with screen shake
-            const offset = new THREE.Vector3(0, 15, 40).applyQuaternion(shipGroup.quaternion);
+            const offset = cameraOffset.clone().applyQuaternion(shipGroup.quaternion);
             const shake = shakeTime > 0 ? new THREE.Vector3(
                 (Math.random() - 0.5) * 2,
                 (Math.random() - 0.5) * 2,
@@ -463,7 +648,6 @@
                 renderer.render(scene, camera);
             }
         }
-        animate();
 
         // Handle window resize
         window.addEventListener('resize', () => {
