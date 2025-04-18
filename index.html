@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic 3D Space Shooter with Endless Terrain</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            color: #00ffcc;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 20px;
+            padding: 20px;
+            text-shadow: 0 0 10px #00ffcc;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="10" cy="10" r="2" fill="none" stroke="%2300ffcc" stroke-width="1"/><line x1="10" y1="2" x2="10" y2="6" stroke="%2300ffcc" stroke-width="1"/><line x1="10" y1="14" x2="10" y2="18" stroke="%2300ffcc" stroke-width="1"/><line x1="2" y1="10" x2="6" y2="10" stroke="%2300ffcc" stroke-width="1"/><line x1="14" y1="10" x2="18" y2="10" stroke="%2300ffcc" stroke-width="1"/></svg>') no-repeat center;
+            transform: translate(-50%, -50%);
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="hud">Asteroids Destroyed: <span id="score">0</span></div>
+    <div id="crosshair"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://unpkg.com/three@0.134.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Post-processing (bloom effect)
+        let composer;
+        try {
+            composer = new THREE.EffectComposer(renderer);
+            const renderPass = new THREE.RenderPass(scene, camera);
+            const bloomPass = new THREE.UnrealBloomPass(
+                new THREE.Vector2(window.innerWidth, window.innerHeight),
+                1.5, 0.4, 0.85
+            );
+            bloomPass.threshold = 0.1;
+            bloomPass.strength = 1.2;
+            bloomPass.radius = 0.5;
+            composer.addPass(renderPass);
+            composer.addPass(bloomPass);
+        } catch (e) {
+            console.warn('Post-processing failed:', e);
+        }
+
+        // Lighting
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        scene.add(ambientLight);
+        const engineLight = new THREE.PointLight(0x00ffcc, 1, 50);
+        scene.add(engineLight);
+
+        // Spaceship (futuristic design)
+        const shipGroup = new THREE.Group();
+        const fuselageGeometry = new THREE.CylinderGeometry(2, 5, 20, 16);
+        const fuselageMaterial = new THREE.MeshStandardMaterial({
+            color: 0xaaaaaa,
+            metalness: 0.8,
+            roughness: 0.2,
+            emissive: 0x00ffcc,
+            emissiveIntensity: 0.2
+        });
+        const fuselage = new THREE.Mesh(fuselageGeometry, fuselageMaterial);
+        const wingGeometry = new THREE.BoxGeometry(10, 1, 5);
+        const wingMaterial = new THREE.MeshStandardMaterial({
+            color: 0x555555,
+            metalness: 0.9,
+            roughness: 0.3
+        });
+        const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+        leftWing.position.set(-7, 0, 0);
+        const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+        rightWing.position.set(7, 0, 0);
+        shipGroup.add(fuselage, leftWing, rightWing);
+        shipGroup.rotation.x = Math.PI / 2;
+        scene.add(shipGroup);
+
+        // Engine particles
+        const particleGeometry = new THREE.BufferGeometry();
+        const particleCount = 50;
+        const particlePositions = new Float32Array(particleCount * 3);
+        const particleVelocities = [];
+        for (let i = 0; i < particleCount; i++) {
+            particlePositions[i * 3] = 0;
+            particlePositions[i * 3 + 1] = 0;
+            particlePositions[i * 3 + 2] = 0;
+            particleVelocities.push(new THREE.Vector3(0, 0, -Math.random() * 5 - 2));
+        }
+        particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+        const particleMaterial = new THREE.PointsMaterial({
+            color: 0x00ffcc,
+            size: 2,
+            transparent: true,
+            opacity: 0.8
+        });
+        const particles = new THREE.Points(particleGeometry, particleMaterial);
+        scene.add(particles);
+
+        // Skybox (nebula background)
+        const skyboxGeometry = new THREE.SphereGeometry(1000, 32, 32);
+        const skyboxMaterial = new THREE.MeshBasicMaterial({
+            color: 0x112244,
+            side: THREE.BackSide
+        });
+        const skybox = new THREE.Mesh(skyboxGeometry, skyboxMaterial);
+        scene.add(skybox);
+
+        // Stars
+        const starGeometry = new THREE.BufferGeometry();
+        const starVertices = [];
+        for (let i = 0; i < 2000; i++) {
+            starVertices.push(
+                (Math.random() - 0.5) * 2000,
+                (Math.random() - 0.5) * 2000,
+                (Math.random() - 0.5) * 2000
+            );
+        }
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xcccccc, size: 1.5 });
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+
+        // Endless terrain (asteroid field)
+        const chunkSize = 200;
+        const chunks = new Map();
+        const asteroids = [];
+        const lasers = [];
+        let score = 0;
+
+        function getChunkKey(x, y, z) {
+            return `${Math.floor(x / chunkSize)},${Math.floor(y / chunkSize)},${Math.floor(z / chunkSize)}`;
+        }
+
+        function createAsteroid(chunkX, chunkY, chunkZ) {
+            const size = Math.random() * 10 + 5;
+            const geometry = new THREE.IcosahedronGeometry(size, 1);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                metalness: 0.5,
+                roughness: 0.8
+            });
+            const asteroid = new THREE.Mesh(geometry, material);
+            asteroid.position.set(
+                chunkX * chunkSize + (Math.random() - 0.5) * chunkSize,
+                chunkY * chunkSize + (Math.random() - 0.5) * chunkSize,
+                chunkZ * chunkSize + (Math.random() - 0.5) * chunkSize
+            );
+            const velocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            );
+            scene.add(asteroid);
+            return { mesh: asteroid, size, velocity, chunkKey: getChunkKey(asteroid.position.x, asteroid.position.y, asteroid.position.z) };
+        }
+
+        function updateChunks() {
+            const chunkX = Math.floor(shipGroup.position.x / chunkSize);
+            const chunkY = Math.floor(shipGroup.position.y / chunkSize);
+            const chunkZ = Math.floor(shipGroup.position.z / chunkSize);
+            const newChunks = new Set();
+
+            // Generate chunks in a 3x3x3 grid around the player
+            for (let x = chunkX - 1; x <= chunkX + 1; x++) {
+                for (let y = chunkY - 1; y <= chunkY + 1; y++) {
+                    for (let z = chunkZ - 1; z <= chunkZ + 1; z++) {
+                        const key = `${x},${y},${z}`;
+                        newChunks.add(key);
+                        if (!chunks.has(key)) {
+                            const chunkAsteroids = [];
+                            for (let i = 0; i < 10; i++) {
+                                const asteroid = createAsteroid(x, y, z);
+                                chunkAsteroids.push(asteroid);
+                                asteroids.push(asteroid);
+                            }
+                            chunks.set(key, chunkAsteroids);
+                        }
+                    }
+                }
+            }
+
+            // Remove chunks outside the 3x3x3 grid
+            for (const [key, chunkAsteroids] of chunks) {
+                if (!newChunks.has(key)) {
+                    chunkAsteroids.forEach(asteroid => {
+                        scene.remove(asteroid.mesh);
+                        const index = asteroids.indexOf(asteroid);
+                        if (index !== -1) asteroids.splice(index, 1);
+                    });
+                    chunks.delete(key);
+                }
+            }
+        }
+
+        // Sound placeholders
+        let laserSound, engineSound, explosionSound, bgMusic;
+        function preloadSounds() {
+            try {
+                // Replace with local audio files
+                // Example: laserSound = new Audio('sounds/laser.mp3');
+                // laserSound = new Audio('sounds/laser.mp3');
+                // engineSound = new Audio('sounds/engine.mp3');
+                // explosionSound = new Audio('sounds/explosion.mp3');
+                // bgMusic = new Audio('sounds/space_ambient.mp3');
+                if (engineSound) {
+                    engineSound.loop = true;
+                    engineSound.volume = 0.2;
+                    engineSound.play().catch(e => console.warn('Engine sound failed:', e));
+                }
+                if (bgMusic) {
+                    bgMusic.loop = true;
+                    bgMusic.volume = 0.1;
+                    bgMusic.play().catch(e => console.warn('Background music failed:', e));
+                }
+            } catch (e) {
+                console.warn('Failed to load sounds:', e);
+            }
+        }
+        preloadSounds();
+
+        // Spaceship physics
+        const shipVelocity = new THREE.Vector3(0, 0, 0);
+        const thrust = 0.2;
+        const maxSpeed = 8;
+        const friction = 0.95;
+        let pitch = 0;
+        let yaw = 0;
+
+        // Input handling
+        const keys = {};
+        document.addEventListener('keydown', e => {
+            keys[e.key] = true;
+            if (e.key === ' ' && !keys['space']) {
+                const laser = createLaser();
+                scene.add(laser.mesh);
+                lasers.push(laser);
+                if (laserSound) laserSound.play().catch(e => console.warn('Laser sound failed:', e));
+                keys['space'] = true;
+            }
+        });
+        document.addEventListener('keyup', e => {
+            keys[e.key] = false;
+            if (e.key === ' ') keys['space'] = false;
+        });
+
+        // Mouse controls for aiming
+        document.addEventListener('mousemove', e => {
+            const sensitivity = 0.002;
+            yaw -= e.movementX * sensitivity;
+            pitch -= e.movementY * sensitivity;
+            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+        });
+        document.body.requestPointerLock = document.body.requestPointerLock || document.body.mozRequestPointerLock || document.body.webkitRequestPointerLock;
+        document.addEventListener('click', () => document.body.requestPointerLock());
+
+        function createLaser() {
+            const geometry = new THREE.SphereGeometry(1, 16, 16);
+            const material = new THREE.MeshBasicMaterial({ color: 0xff3333, emissive: 0xff3333 });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.copy(shipGroup.position);
+            mesh.quaternion.copy(shipGroup.quaternion);
+            const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(shipGroup.quaternion);
+            const velocity = direction.multiplyScalar(12);
+            const trailGeometry = new THREE.BufferGeometry();
+            const trailPositions = new Float32Array(10 * 3);
+            for (let i = 0; i < 10; i++) {
+                trailPositions[i * 3] = 0;
+                trailPositions[i * 3 + 1] = 0;
+                trailPositions[i * 3 + 2] = 0;
+            }
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+            const trailMaterial = new THREE.PointsMaterial({
+                color: 0xff6666,
+                size: 1,
+                transparent: true,
+                opacity: 0.5
+            });
+            const trail = new THREE.Points(trailGeometry, trailMaterial);
+            scene.add(trail);
+            return { mesh, trail, velocity, size: 1 };
+        }
+
+        function update() {
+            // Update orientation (mouse-based)
+            shipGroup.quaternion.setFromEuler(new THREE.Euler(pitch, yaw, 0, 'YXZ'));
+
+            // Movement controls
+            let thrusting = false;
+            if (keys['w'] || keys['ArrowUp']) {
+                const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(shipGroup.quaternion);
+                shipVelocity.add(direction.multiplyScalar(thrust));
+                thrusting = true;
+            }
+            if (keys['s'] || keys['ArrowDown']) {
+                const direction = new THREE.Vector3(0, 0, 1).applyQuaternion(shipGroup.quaternion);
+                shipVelocity.add(direction.multiplyScalar(thrust));
+                thrusting = true;
+            }
+            if (keys['a'] || keys['ArrowLeft']) {
+                const direction = new THREE.Vector3(-1, 0, 0).applyQuaternion(shipGroup.quaternion);
+                shipVelocity.add(direction.multiplyScalar(thrust));
+                thrusting = true;
+            }
+            if (keys['d'] || keys['ArrowRight']) {
+                const direction = new THREE.Vector3(1, 0, 0).applyQuaternion(shipGroup.quaternion);
+                shipVelocity.add(direction.multiplyScalar(thrust));
+                thrusting = true;
+            }
+
+            // Apply friction and speed limit
+            shipVelocity.multiplyScalar(friction);
+            if (shipVelocity.length() > maxSpeed) {
+                shipVelocity.normalize().multiplyScalar(maxSpeed);
+            }
+
+            // Update position
+            shipGroup.position.add(shipVelocity);
+
+            // Update engine particles
+            for (let i = 0; i < particleCount; i++) {
+                const pos = particlePositions[i * 3 + 2];
+                if (pos < -20 || pos > 0) {
+                    particlePositions[i * 3] = (Math.random() - 0.5) * 2;
+                    particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 2;
+                    particlePositions[i * 3 + 2] = 0;
+                } else {
+                    particlePositions[i * 3] += particleVelocities[i].x * (thrusting ? 1 : 0.2);
+                    particlePositions[i * 3 + 1] += particleVelocities[i].y * (thrusting ? 1 : 0.2);
+                    particlePositions[i * 3 + 2] += particleVelocities[i].z * (thrusting ? 1 : 0.2);
+                }
+            }
+            particleGeometry.attributes.position.needsUpdate = true;
+            particles.position.copy(shipGroup.position);
+            particles.quaternion.copy(shipGroup.quaternion);
+
+            // Update engine light
+            engineLight.position.copy(shipGroup.position);
+            engineLight.position.add(new THREE.Vector3(0, 0, 10).applyQuaternion(shipGroup.quaternion));
+
+            // Update chunks
+            updateChunks();
+
+            // Update asteroids
+            asteroids.forEach(asteroid => {
+                asteroid.mesh.position.add(asteroid.velocity);
+                asteroid.mesh.rotation.x += 0.01;
+                asteroid.mesh.rotation.y += 0.01;
+                const newChunkKey = getChunkKey(asteroid.mesh.position.x, asteroid.mesh.position.y, asteroid.mesh.position.z);
+                if (newChunkKey !== asteroid.chunkKey) {
+                    asteroid.chunkKey = newChunkKey;
+                }
+            });
+
+            // Update lasers
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const laser = lasers[i];
+                laser.mesh.position.add(laser.velocity);
+                const trailPositions = laser.trail.geometry.attributes.position.array;
+                for (let j = 9; j > 0; j--) {
+                    trailPositions[j * 3] = trailPositions[(j - 1) * 3];
+                    trailPositions[j * 3 + 1] = trailPositions[(j - 1) * 3 + 1];
+                    trailPositions[j * 3 + 2] = trailPositions[(j - 1) * 3 + 2];
+                }
+                trailPositions[0] = laser.mesh.position.x;
+                trailPositions[1] = laser.mesh.position.y;
+                trailPositions[2] = laser.mesh.position.z;
+                laser.trail.geometry.attributes.position.needsUpdate = true;
+                if (laser.mesh.position.distanceTo(shipGroup.position) > 2000) {
+                    scene.remove(laser.mesh);
+                    scene.remove(laser.trail);
+                    lasers.splice(i, 1);
+                    continue;
+                }
+
+                // Check laser-asteroid collisions
+                for (let j = asteroids.length - 1; j >= 0; j--) {
+                    const asteroid = asteroids[j];
+                    const distance = laser.mesh.position.distanceTo(asteroid.mesh.position);
+                    if (distance < laser.size + asteroid.size) {
+                        scene.remove(asteroid.mesh);
+                        asteroids.splice(j, 1);
+                        scene.remove(laser.mesh);
+                        scene.remove(laser.trail);
+                        lasers.splice(i, 1);
+                        asteroids.push(createAsteroid(
+                            Math.floor(laser.mesh.position.x / chunkSize),
+                            Math.floor(laser.mesh.position.y / chunkSize),
+                            Math.floor(laser.mesh.position.z / chunkSize)
+                        ));
+                        score++;
+                        document.getElementById('score').textContent = score;
+                        shakeTime = 0.2;
+                        if (explosionSound) explosionSound.play().catch(e => console.warn('Explosion sound failed:', e));
+                        break;
+                    }
+                }
+            }
+
+            // Check spaceship-asteroid collisions
+            let shakeTime = 0;
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                const asteroid = asteroids[i];
+                const distance = shipGroup.position.distanceTo(asteroid.mesh.position);
+                if (distance < 10 + asteroid.size) {
+                    scene.remove(asteroid.mesh);
+                    asteroids.splice(i, 1);
+                    asteroids.push(createAsteroid(
+                        Math.floor(shipGroup.position.x / chunkSize),
+                        Math.floor(shipGroup.position.y / chunkSize),
+                        Math.floor(shipGroup.position.z / chunkSize)
+                    ));
+                    score++;
+                    document.getElementById('score').textContent = score;
+                    shakeTime = 0.2;
+                    if (explosionSound) explosionSound.play().catch(e => console.warn('Explosion sound failed:', e));
+                }
+            }
+
+            // Update camera with screen shake
+            const offset = new THREE.Vector3(0, 15, 40).applyQuaternion(shipGroup.quaternion);
+            const shake = shakeTime > 0 ? new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            ) : new THREE.Vector3();
+            camera.position.copy(shipGroup.position).add(offset).add(shake);
+            camera.lookAt(shipGroup.position);
+            shakeTime -= 0.016;
+            if (shakeTime < 0) shakeTime = 0;
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            if (composer) {
+                composer.render();
+            } else {
+                renderer.render(scene, camera);
+            }
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            if (composer) {
+                composer.setSize(window.innerWidth, window.innerHeight);
+            }
+        });
+    </script>
+</body>
+</html>
